@@ -1,0 +1,1 @@
+sudo ./fips/target/release/fips -c config.yaml
