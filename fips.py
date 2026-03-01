@@ -127,10 +127,13 @@ if __name__ == "__main__":
         if sys.argv[1] == "setup_config":
             init_config_with_keys()
         if sys.argv[1] == "add_peer":
-            if len(sys.argv) > 2:
+            if len(sys.argv) > 3:
                 npub = sys.argv[2]
-                add_peer(npub)
+                addr = sys.argv[3]
+                add_peer(npub, addr)
             else:
-                print("Please provide an npub for the peer to add. Example: 'python fips.py add_peer npub1ytfkfyjc86z36qyr7cq4trwchesecp89qw3ej9rmxp4mupfz8nfqf40cvh'.")
+                print("Please provide an npub for the peer to add. Example: 'python fips.py add_peer npub1ytfkfyjc86z36qyr7cq4trwchesecp89qw3ej9rmxp4mupfz8nfqf40cvh 4366472e6c70d2c8a7c08a729305caf2'.")
     else:
-        print("Options:\nRun 'python fips.py setup_config' to setup a new config.")
+        print("Options:")
+        print("'python fips.py setup_config' to setup a new config.")
+        print("'python fips.py add_peer <npub> <node_addr>' to add a new peer.")
