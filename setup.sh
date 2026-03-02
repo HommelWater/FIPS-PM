@@ -9,4 +9,5 @@ git clone https://github.com/jmcorgan/fips.git
 cd fips
 cargo build --release
 cd ..
-python fips.py setup_config
+read -p "Enter an alias to refer to this machine as. Keep it unique to distinguish yourself from your peers: " alias
+python fips.py setup_config $alias
