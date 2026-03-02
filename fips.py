@@ -3,6 +3,8 @@ import secrets
 from typing import Dict, Optional, Tuple
 import requests
 
+PORT = "2121"
+
 def get_public_ip():
     """
     Retrieves the public IP address of the machine.
@@ -58,7 +60,7 @@ def bytes_to_bech32(data: bytes, hrp: str) -> str:
     converted = bech32.convertbits(data, 8, 5)
     return bech32.bech32_encode(hrp, converted)
 
-def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0:2121", output_path: str = "config.yaml") -> Dict:
+def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0", output_path: str = "config.yaml") -> Dict:
     """
     Initialize config with freshly generated keys.
     Returns config with nsec/npub and saves to file.
@@ -75,8 +77,8 @@ def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0:2121", output_path
         },
         "transports": {
             "udp": {
-                "bind_addr": bind_addr,
-                "public_addr": get_public_ip()
+                "bind_addr": bind_addr + f":{PORT}",
+                "public_addr": get_public_ip() + f":{PORT}"
             }
         },
         "peers": []
@@ -102,8 +104,7 @@ def derive_npub_from_nsec(nsec: str) -> str:
 
 def get_npub_from_config(config_path: str = "config.yaml") -> Optional[str]:
     """Get npub from config (stored or derived from nsec)."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+    config = load_config(config_path)
     
     identity = config.get("node", {}).get("identity", {})
     
@@ -117,14 +118,18 @@ def get_npub_from_config(config_path: str = "config.yaml") -> Optional[str]:
 
 def share_my_info(config_path: str = "config.yaml") -> Dict:
     """Get your public info to share with peers."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    return {
-        "npub": get_npub_from_config(config_path),
+    config = load_config(config_path)
+    try:
+        info = {
+        "alias":config["node"]["identity"]["alias"],
+        "npub": config["node"]["identity"]["npub"],
         "transport": "udp",
         "node_addr": config["transports"]["udp"]["public_addr"]
     }
+        return info
+    except:
+        print("Invalid config layout! Could not get config info.")
+    return None
 
 # Peer management functions (unchanged)
 def load_config(config_path: str = "config.yaml") -> Dict:
@@ -185,11 +190,12 @@ if __name__ == "__main__":
                 print("Please provide an npub for the peer to remove. Example: 'python fips.py remove_peer npub1ytfkfyjc86z36qyr7cq4trwchesecp89qw3ej9rmxp4mupfz8nfqf40cvh'.")
         if sys.argv[1] == "info":
             info = share_my_info()
-            print("Connect your node using this information:")
-            print(info)
-        else:
-            print("Please provide an npub for the peer to remove. Example: 'python fips.py remove_peer npub1ytfkfyjc86z36qyr7cq4trwchesecp89qw3ej9rmxp4mupfz8nfqf40cvh'.")
-
+            if info:
+                print("Connect your node using this information:")
+                print(f"npub: {info["npub"]}")
+                print("")
+                print("Run the following command to add this node to a node's peers:")
+                print(f"python fips.py add_peer {info["npub"]} {info["node_addr"]} {info["alias"]}")
     else:
         print("Options:")
         print("'python fips.py info' for your peer's info.")
