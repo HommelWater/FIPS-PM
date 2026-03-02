@@ -71,14 +71,14 @@ def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0", output_path: str
         "node": {
             "identity": {
                 "nsec": nsec,
-                "npub": npub,  # Store both for convenience
-                "alias": alias
+                "npub": npub,
+                "alias": alias,
+                "public_addr": get_public_ip() + f":{PORT}"
             }
         },
         "transports": {
             "udp": {
-                "bind_addr": bind_addr + f":{PORT}",
-                "public_addr": get_public_ip() + f":{PORT}"
+                "bind_addr": bind_addr + f":{PORT}"
             }
         },
         "peers": []
@@ -124,7 +124,7 @@ def share_my_info(config_path: str = "config.yaml") -> Dict:
         "alias":config["node"]["identity"]["alias"],
         "npub": config["node"]["identity"]["npub"],
         "transport": "udp",
-        "node_addr": config["transports"]["udp"]["public_addr"]
+        "node_addr": config["node"]["identity"]["public_addr"]
     }
         return info
     except:
