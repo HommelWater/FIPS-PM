@@ -1,7 +1,35 @@
+#!/bin/bash
+
 # Kill existing programs on fips port
-sudo kill -9 $(sudo lsof -t -i :5354)
+sudo kill -9 $(sudo lsof -t -i :5354) 2>/dev/null || true
+
 # Restart systemd-resolved to be safe
 sudo systemctl restart systemd-resolved
+
+# Check if NetworkManager is active and add exception for fips0
+if systemctl is-active --quiet NetworkManager; then
+    echo "NetworkManager is active, adding exception for fips0..."
+    
+    # Method 1: Create NetworkManager config to ignore fips0
+    sudo mkdir -p /etc/NetworkManager/conf.d
+    sudo tee /etc/NetworkManager/conf.d/99-fips0-ignore.conf > /dev/null <<'EOF'
+[keyfile]
+unmanaged-devices=interface-name:fips0
+EOF
+    
+    # Method 2: Also ensure fips0 connection is unmanaged if it exists
+    if nmcli connection show fips0 &>/dev/null; then
+        sudo nmcli connection modify fips0 connection.autoconnect no
+        sudo nmcli connection down fips0 2>/dev/null || true
+    fi
+    
+    # Reload NetworkManager to apply changes
+    sudo systemctl reload NetworkManager
+    sleep 1
+    echo "NetworkManager will ignore fips0 interface"
+else
+    echo "NetworkManager is not active"
+fi
 
 # Start FIPS in the background
 echo "Starting FIPS node..."
