@@ -16,5 +16,5 @@ print(f"  http://localhost:{PORT}/  (local)\n")
 
 # Bind to ALL interfaces - FIPS routes fd00:: traffic here
 socketserver.TCPServer.address_family = socket.AF_INET6
-with socketserver.TCPServer(("::", PORT), http.server.SimpleHTTPRequestHandler) as s:
+with socketserver.TCPServer((NPUB + ".fips", PORT), http.server.SimpleHTTPRequestHandler) as s:
     s.serve_forever()

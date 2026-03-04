@@ -63,6 +63,11 @@ sudo sysctl -w net.ipv6.conf.all.forwarding=1
 sudo ip6tables -A FORWARD -i fips0 -j ACCEPT
 sudo ip6tables -A FORWARD -o fips0 -j ACCEPT
 
+sudo ethtool -K fips0 tx-checksum-ipv6 off
+sudo ethtool -K fips0 rx-checksum-ipv6 off
+sudo ethtool -K fips0 tso off
+sudo ethtool -K fips0 gso off
+
 echo "FIPS node running (PID: $FIPS_PID)"
 echo "DNS configured for .fips domains"
 echo ""
