@@ -2,73 +2,93 @@
 
 # Kill existing programs on fips port
 sudo kill -9 $(sudo lsof -t -i :5354) 2>/dev/null || true
+set -e
 
-# Restart systemd-resolved to be safe
-sudo systemctl restart systemd-resolved
+FIPS_BIN="./fips/target/release/fips"
+CONFIG_FILE="config.yaml"
+DNS_PORT="5354"
+INTERFACE="fips0"
 
-# Check if NetworkManager is active and add exception for fips0
-if systemctl is-active --quiet NetworkManager; then
-    echo "NetworkManager is active, adding exception for fips0..."
-    
-    # Method 1: Create NetworkManager config to ignore fips0
-    sudo mkdir -p /etc/NetworkManager/conf.d
-    sudo tee /etc/NetworkManager/conf.d/99-fips0-ignore.conf > /dev/null <<'EOF'
-[keyfile]
-unmanaged-devices=interface-name:fips0
-EOF
-    
-    # Method 2: Also ensure fips0 connection is unmanaged if it exists
-    if nmcli connection show fips0 &>/dev/null; then
-        sudo nmcli connection modify fips0 connection.autoconnect no
-        sudo nmcli connection down fips0 2>/dev/null || true
-    fi
-    
-    # Reload NetworkManager to apply changes
-    sudo systemctl reload NetworkManager
-    sleep 1
-    echo "NetworkManager will ignore fips0 interface"
-else
-    echo "NetworkManager is not active"
+echo "=== Starting FIPS node ==="
+
+# Kill anything using DNS port (only if exists)
+if lsof -ti :"$DNS_PORT" >/dev/null 2>&1; then
+    echo "Freeing DNS port $DNS_PORT..."
+    sudo kill -9 $(lsof -ti :"$DNS_PORT") || true
 fi
 
-# Start FIPS in the background
-echo "Starting FIPS node..."
-sudo ./fips/target/release/fips -c config.yaml &
+# Restart systemd-resolved (safe reset)
+sudo systemctl restart systemd-resolved
+
+# ---- NetworkManager handling (idempotent) ----
+if systemctl is-active --quiet NetworkManager; then
+    echo "Ensuring NetworkManager ignores $INTERFACE..."
+
+    CONF_FILE="/etc/NetworkManager/conf.d/99-fips0-ignore.conf"
+
+    if [ ! -f "$CONF_FILE" ]; then
+        sudo mkdir -p /etc/NetworkManager/conf.d
+        echo "[keyfile]
+unmanaged-devices=interface-name:$INTERFACE" | sudo tee "$CONF_FILE" >/dev/null
+        sudo systemctl reload NetworkManager
+        echo "NetworkManager ignore rule created."
+    else
+        echo "NetworkManager already configured."
+    fi
+fi
+
+# ---- Start FIPS ----
+echo "Starting FIPS..."
+sudo "$FIPS_BIN" -c "$CONFIG_FILE" &
 FIPS_PID=$!
 
-# Wait for fips0 interface to appear (timeout after 30 seconds)
-echo "Waiting for fips0 interface to come up..."
+# Wait for interface
+echo "Waiting for $INTERFACE to appear..."
 for i in {1..30}; do
-    if ip link show fips0 &>/dev/null; then
-        echo "fips0 interface is up!"
+    if ip link show "$INTERFACE" &>/dev/null; then
+        echo "$INTERFACE is up."
         break
     fi
     sleep 1
 done
 
-# Verify interface exists
-if ! ip link show fips0 &>/dev/null; then
-    echo "ERROR: fips0 interface did not come up in time"
-    sudo kill $FIPS_PID 2>/dev/null
+if ! ip link show "$INTERFACE" &>/dev/null; then
+    echo "ERROR: $INTERFACE did not appear."
+    sudo kill "$FIPS_PID" 2>/dev/null || true
     exit 1
 fi
 
-# Configure DNS for fips0
-echo "Configuring DNS resolver..."
-sudo resolvectl dns fips0 127.0.0.1:5354
-sudo resolvectl domain fips0 "~fips"
+# ---- DNS config (safe overwrite) ----
+echo "Configuring DNS for .fips"
+sudo resolvectl dns "$INTERFACE" 127.0.0.1:$DNS_PORT
+sudo resolvectl domain "$INTERFACE" "~fips"
 
-# Allow ipv6 forwarding for fips0
-sudo sysctl -w net.ipv6.conf.all.forwarding=1
-sudo ip6tables -A FORWARD -i fips0 -j ACCEPT
-sudo ip6tables -A FORWARD -o fips0 -j ACCEPT
+# ---- Enable IPv6 forwarding (only if needed) ----
+CURRENT_FORWARD=$(sysctl -n net.ipv6.conf.all.forwarding)
+if [ "$CURRENT_FORWARD" -ne 1 ]; then
+    echo "Enabling IPv6 forwarding..."
+    sudo sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null
+fi
 
-sudo ethtool -K fips0 tx-checksum-ipv6 off
-sudo ethtool -K fips0 rx-checksum-ipv6 off
-sudo ethtool -K fips0 tso off
-sudo ethtool -K fips0 gso off
+# ---- Disable offloading (ignore errors silently) ----
+sudo ethtool -K "$INTERFACE" tx-checksum-ipv6 off 2>/dev/null || true
+sudo ethtool -K "$INTERFACE" rx-checksum-ipv6 off 2>/dev/null || true
+sudo ethtool -K "$INTERFACE" tso off 2>/dev/null || true
+sudo ethtool -K "$INTERFACE" gso off 2>/dev/null || true
 
-echo "FIPS node running (PID: $FIPS_PID)"
-echo "DNS configured for .fips domains"
+# ---- firewalld integration (idempotent) ----
+if systemctl is-active --quiet firewalld; then
+    echo "Ensuring $INTERFACE is in trusted zone..."
+
+    if ! firewall-cmd --zone=trusted --query-interface="$INTERFACE" >/dev/null; then
+        sudo firewall-cmd --permanent --zone=trusted --add-interface="$INTERFACE"
+        sudo firewall-cmd --reload
+        echo "$INTERFACE added to trusted zone."
+    else
+        echo "$INTERFACE already trusted."
+    fi
+fi
+
 echo ""
-echo "To stop FIPS: sudo kill $FIPS_PID"
+echo "FIPS node running (PID: $FIPS_PID)"
+echo "To stop: sudo kill $FIPS_PID"
