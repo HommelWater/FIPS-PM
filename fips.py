@@ -3,7 +3,7 @@ import secrets
 from typing import Dict, Optional, Tuple
 import requests
 
-PORT = "2121"
+PORT = "443"
 
 def get_public_ip():
     """
@@ -82,7 +82,7 @@ def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0", output_path: str
             "mtu": 1280
         },
         "transports": {
-            "udp": {
+            "tcp":{
                 "bind_addr": bind_addr + f":{PORT}"
             }
         },

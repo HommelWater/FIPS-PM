@@ -58,6 +58,11 @@ echo "Configuring DNS resolver..."
 sudo resolvectl dns fips0 127.0.0.1:5354
 sudo resolvectl domain fips0 "~fips"
 
+# Allow ipv6 forwarding for fips0
+sudo sysctl -w net.ipv6.conf.all.forwarding=1
+sudo ip6tables -A FORWARD -i fips0 -j ACCEPT
+sudo ip6tables -A FORWARD -o fips0 -j ACCEPT
+
 echo "FIPS node running (PID: $FIPS_PID)"
 echo "DNS configured for .fips domains"
 echo ""
