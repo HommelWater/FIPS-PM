@@ -75,6 +75,11 @@ def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0", output_path: str
                 "alias": alias,
                 "public_addr": get_public_ip() + f":{PORT}"
             }
+        }, 
+        "tun": {
+            "enabled": "true",
+            "name": "fips0",
+            "mtu": "1280"
         },
         "transports": {
             "udp": {
