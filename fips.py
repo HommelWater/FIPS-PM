@@ -79,7 +79,7 @@ def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0", output_path: str
         "tun": {
             "enabled": True,
             "name": "fips0",
-            "mtu": "1280"
+            "mtu": 1280
         },
         "transports": {
             "udp": {
