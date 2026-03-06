@@ -17,4 +17,4 @@ cd ..
 read -p "Enter an alias to refer to this machine as. Keep it unique to distinguish yourself from your peers: " alias
 python fips.py setup $alias
 
-echo "FIPS was setup, start your node using 'bash start.sh"
+echo "FIPS was setup, start your node using 'bash start.sh'"
