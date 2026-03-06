@@ -2,7 +2,7 @@ node:
   identity:
     nsec: {NSEC}
     node_info:
-    - npub: {NPUB}
+      npub: {NPUB}
       alias: {ALIAS}
       addresses:
       - transport: tcp
