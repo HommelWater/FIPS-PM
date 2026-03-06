@@ -124,7 +124,7 @@ def main():
     if arg == "info":
         info = get_node_info()
         print("Run the following command on another node to add this node to a node's peers:")
-        print(f"python fips.py add_peer '{str(info)}'")
+        print(f"python fips.py add_peer \"{str(info)}\"")
         print("")
         print("Connect to this node using your npub:")
         print(f"npub: '{info["npub"]}'")
