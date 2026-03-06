@@ -3,8 +3,6 @@ import secrets
 from typing import Dict, Optional, Tuple
 import requests
 
-PORT = "443"
-
 def get_public_ip():
     """
     Retrieves the public IP address of the machine.
@@ -60,83 +58,31 @@ def bytes_to_bech32(data: bytes, hrp: str) -> str:
     converted = bech32.convertbits(data, 8, 5)
     return bech32.bech32_encode(hrp, converted)
 
-def init_config_with_keys(alias="", bind_addr: str = "0.0.0.0", output_path: str = "config.yaml") -> Dict:
-    """
-    Initialize config with freshly generated keys.
-    Returns config with nsec/npub and saves to file.
-    """
+def init_config_with_keys(alias, udp_port=2121, tcp_port=443, config_path="config.yaml") -> Dict:
     nsec, npub = generate_nostr_keys()
-    
-    config = {
-        "node": {
-            "identity": {
-                "nsec": nsec,
-                "npub": npub,
-                "alias": alias,
-                "public_addr": get_public_ip() + f":{PORT}"
-            }
-        }, 
-        "tun": {
-            "enabled": True,
-            "name": "fips0",
-            "mtu": 1280
-        },
-        "transports": {
-            "tcp":{
-                "bind_addr": bind_addr + f":{PORT}"
-            }
-        },
-        "peers": []
-    }
-    
-    with open(output_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    
-    print(f"Generated keys:\n  nsec: {nsec}\n  npub: {npub}")
-    return config
+    addr = get_public_ip()
+    with open("template_config.yaml", "r") as f:
+        config_string = f.read()
 
-def derive_npub_from_nsec(nsec: str) -> str:
-    """Derive npub from nsec bech32 string."""
-    import bech32, secp256k1
-    
-    hrp, data = bech32.bech32_decode(nsec)
-    private_key_bytes = bytes(bech32.convertbits(data, 5, 8, False))
-    
-    priv_key = secp256k1.PrivateKey(private_key_bytes)
-    pub_key_bytes = priv_key.pubkey.serialize()[1:]
-    
-    return bytes_to_bech32(pub_key_bytes, 'npub')
+    config_string = config_string.replace("{ALIAS}", alias)
+    config_string = config_string.replace("{ADDR}", addr)
+    config_string = config_string.replace("{TCP_PORT}", str(tcp_port))
+    config_string = config_string.replace("{UDP_PORT}", str(udp_port))
+    config_string = config_string.replace("{NPUB}", npub)
+    config_string = config_string.replace("{NSEC}", nsec)
 
-def get_npub_from_config(config_path: str = "config.yaml") -> Optional[str]:
-    """Get npub from config (stored or derived from nsec)."""
-    config = load_config(config_path)
-    
-    identity = config.get("node", {}).get("identity", {})
-    
-    if "npub" in identity:
-        return identity["npub"]
-    
-    nsec = identity.get("nsec", "")
-    if nsec.startswith("nsec1"):
-        return derive_npub_from_nsec(nsec)
-    return None
+    with open(config_path, 'w') as f:
+        f.write(config_string)
+    return load_config(config_path)
 
-def share_my_info(config_path: str = "config.yaml") -> Dict:
-    """Get your public info to share with peers."""
+def get_node_info(config_path: str = "config.yaml") -> Dict:
     config = load_config(config_path)
     try:
-        info = {
-        "alias":config["node"]["identity"]["alias"],
-        "npub": config["node"]["identity"]["npub"],
-        "transport": "udp",
-        "node_addr": config["node"]["identity"]["public_addr"]
-    }
-        return info
+        info = config["node"]["identity"]["node_info"]
     except:
-        print("Invalid config layout! Could not get config info.")
-    return None
+        print("Could not access your node's node_info!")
+    return info
 
-# Peer management functions (unchanged)
 def load_config(config_path: str = "config.yaml") -> Dict:
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
@@ -145,65 +91,72 @@ def save_config(config: Dict, config_path: str = "config.yaml"):
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
-def add_peer(npub: str, addr: str, alias, transport: str = "udp", config_path: str = "config.yaml") -> Dict:
+def add_peer(peer_info, config_path: str = "config.yaml") -> Dict:
     config = load_config(config_path)
-    config["peers"] = [p for p in config.get("peers", []) if p.get("npub") != npub]
-    config["peers"].append({
-        "npub": npub,
-        "alias":alias,
-        "addresses": [{"transport": transport, "addr": addr}]
-    })
+    config["peers"] = [p for p in config.get("peers", []) if p.get("npub") != peer_info["npub"]]
+    if peer_info.get("alias", "") in config["peers"]:
+        print("This alias already exists! Please enter a unique peer alias.")
+        return config
+    config["peers"].append(peer_info)
     save_config(config, config_path)
     return config
 
 def remove_peer(alias: str, config_path: str = "config.yaml") -> Optional[Dict]:
     config = load_config(config_path)
-    original_len = len(config.get("peers", []))
     config["peers"] = [p for p in config["peers"] if p.get("alias") != alias]
-    if len(config["peers"]) == original_len:
-        return None
     save_config(config, config_path)
     return config
 
-if __name__ == "__main__":
+def print_options():
+    print("Options:")
+    print("'python fips.py info' for your peer's info.")
+    print("'python fips.py setup <alias>' to setup a new config.")
+    print("'python fips.py add_peer <peer_info json string>' to add a new peer.")
+    print("'python fips.py remove_peer <alias>' to remove a peer.")
+
+def main():
     import sys
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "setup_config":
-            if len(sys.argv) > 2:
-                alias = sys.argv[2]
-                init_config_with_keys(alias)
-            else:
-                print("Please provide an alias for this machine. Example 'python fips.py setup_config home-desktop'")
-        if sys.argv[1] == "add_peer":
-            if len(sys.argv) > 4:
-                npub = sys.argv[2]
-                addr = sys.argv[3]
-                alias = sys.argv[4]
-                add_peer(npub, addr, alias)
-                print(f"Added peer '{alias}' with npub '{npub}' and address '{addr}'.")
-            else:
-                print("Please provide an npub and address for the peer to add. Example: 'python fips.py add_peer npub1ytfkfyjc86z36qyr7cq4trwchesecp89qw3ej9rmxp4mupfz8nfqf40cvh 12.34.56.789:2121 alias_B'.")
-        if sys.argv[1] == "remove_peer":
-            if len(sys.argv) > 2:
-                alias = sys.argv[2]
-                s = remove_peer(alias)
-                if s is None:
-                    print(f"Could not find peer with alias {alias}")
-                else:
-                    print(f"Removed peer '{alias}'.")
-            else:
-                print("Please provide an npub for the peer to remove. Example: 'python fips.py remove_peer npub1ytfkfyjc86z36qyr7cq4trwchesecp89qw3ej9rmxp4mupfz8nfqf40cvh'.")
-        if sys.argv[1] == "info":
-            info = share_my_info()
-            if info:
-                print("Connect your node using this information:")
-                print(f"npub: {info["npub"]}")
-                print("")
-                print("Run the following command to add this node to a node's peers:")
-                print(f"python fips.py add_peer {info["npub"]} {info["node_addr"]} {info["alias"]}")
-    else:
-        print("Options:")
-        print("'python fips.py info' for your peer's info.")
-        print("'python fips.py setup_config <alias>' to setup a new config.")
-        print("'python fips.py add_peer <npub> <node_public_address> <alias>' to add a new peer.")
-        print("'python fips.py remove_peer <alias>' to remove a peer.")
+    arg_count = len(sys.argv)
+    if arg_count == 1: 
+        print_options()
+        return
+    arg = sys.argv[1]
+    if arg == "info":
+        info = get_node_info()
+        print("Run the following command on another node to add this node to a node's peers:")
+        print(f"python fips.py add_peer {str(info)}")
+        print("")
+        print("Connect to this node using your npub:")
+        print(f"npub: '{info["npub"]}'")
+
+    if arg == "setup":
+        if arg_count < 3:
+            print("Invalid argument count.")
+            print("")
+            print_options()
+            return
+        alias = sys.argv[2]
+        init_config_with_keys(alias)
+
+    if arg == "add_peer":
+        if arg_count < 3:
+            print("Invalid argument count.")
+            print("")
+            print_options()
+            return
+        import json
+        peer_info_string = sys.argv[2]
+        peer_info = json.loads(peer_info_string)
+        add_peer(peer_info)
+    
+    if arg == "remove_peer":
+        if arg_count < 3:
+            print("Invalid argument count.")
+            print("")
+            print_options()
+            return
+        alias = sys.argv[2]
+        remove_peer(alias)
+
+if __name__ == "__main__":
+    main()
