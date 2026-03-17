@@ -12,9 +12,11 @@ if [ ! -d "fips" ]; then
 fi
 cd fips
 cargo build --release
-cd ..
 
-read -p "Enter an alias to refer to this machine as. Keep it unique to distinguish yourself from your peers: " alias
-python fips.py setup $alias
+./packaging/systemd/build-tarball.sh
+tar xzf deploy/fips-*-linux-*.tar.gz
+cd fips-*-linux-*/
+sudo ./install.sh
 
-echo "FIPS was setup, start your node using 'bash start.sh'"
+cd ../../
+sudo cp ./template_config.yaml /etc/fips/fips.yaml

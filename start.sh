@@ -4,18 +4,12 @@
 sudo kill -9 $(sudo lsof -t -i :5354) 2>/dev/null || true
 set -e
 
-FIPS_BIN="./fips/target/release/fips"
-CONFIG_FILE="config.yaml"
+FIPS_BIN="fips"
 DNS_PORT="5354"
 INTERFACE="fips0"
 
 echo "=== Starting FIPS node ==="
-
-# Kill anything using DNS port (only if exists)
-if lsof -ti :"$DNS_PORT" >/dev/null 2>&1; then
-    echo "Freeing DNS port $DNS_PORT..."
-    sudo kill -9 $(lsof -ti :"$DNS_PORT") || true
-fi
+sudo systemctl stop fips
 
 # Restart systemd-resolved (safe reset)
 sudo systemctl restart systemd-resolved
@@ -39,8 +33,7 @@ fi
 
 # ---- Start FIPS ----
 echo "Starting FIPS..."
-sudo "$FIPS_BIN" -c "$CONFIG_FILE" &
-FIPS_PID=$!
+sudo systemctl start fips
 
 # Wait for interface
 echo "Waiting for $INTERFACE to appear..."
@@ -54,7 +47,7 @@ done
 
 if ! ip link show "$INTERFACE" &>/dev/null; then
     echo "ERROR: $INTERFACE did not appear."
-    sudo kill "$FIPS_PID" 2>/dev/null || true
+    sudo systemctl stop fips
     exit 1
 fi
 
@@ -88,7 +81,6 @@ if systemctl is-active --quiet firewalld; then
         echo "$INTERFACE already trusted."
     fi
 fi
-
 echo ""
-echo "FIPS node running (PID: $FIPS_PID)"
-echo "To stop: sudo kill $FIPS_PID"
+echo "To stop: sudo systemctl stop fips"
+echo "For info: sudo fipsctl -s '/run/fips/control.sock'"
